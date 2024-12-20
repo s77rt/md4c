@@ -382,8 +382,9 @@ md_ascii_eq(const CHAR* s1, const CHAR* s2, SZ n)
 }
 
 static int
-md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, SZ size)
+md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OFF offset, SZ size)
 {
+    OFF absOff = offset;
     OFF off = 0;
     int ret = 0;
 
@@ -392,11 +393,12 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, SZ
             off++;
 
         if(off > 0) {
-            ret = ctx->parser.text(type, str, off, ctx->userdata);
+            ret = ctx->parser.text(type, str, absOff, off, ctx->userdata);
             if(ret != 0)
                 return ret;
 
             str += off;
+            absOff += off;
             size -= off;
             off = 0;
         }
@@ -404,7 +406,7 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, SZ
         if(off >= size)
             return 0;
 
-        ret = ctx->parser.text(MD_TEXT_NULLCHAR, _T(""), 1, ctx->userdata);
+        ret = ctx->parser.text(MD_TEXT_NULLCHAR, _T(""), absOff, 1, ctx->userdata);
         if(ret != 0)
             return ret;
         off++;
@@ -475,26 +477,26 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, SZ
         }                                                                   \
     } while(0)
 
-#define MD_TEXT(type, str, size)                                            \
-    do {                                                                    \
-        if(size > 0) {                                                      \
-            ret = ctx->parser.text((type), (str), (size), ctx->userdata);   \
-            if(ret != 0) {                                                  \
-                MD_LOG("Aborted from text() callback.");                    \
-                goto abort;                                                 \
-            }                                                               \
-        }                                                                   \
+#define MD_TEXT(type, str, offset, size)                                              \
+    do {                                                                              \
+        if(size > 0) {                                                                \
+            ret = ctx->parser.text((type), (str), (offset), (size), ctx->userdata);   \
+            if(ret != 0) {                                                            \
+                MD_LOG("Aborted from text() callback.");                              \
+                goto abort;                                                           \
+            }                                                                         \
+        }                                                                             \
     } while(0)
 
-#define MD_TEXT_INSECURE(type, str, size)                                   \
-    do {                                                                    \
-        if(size > 0) {                                                      \
-            ret = md_text_with_null_replacement(ctx, type, str, size);      \
-            if(ret != 0) {                                                  \
-                MD_LOG("Aborted from text() callback.");                    \
-                goto abort;                                                 \
-            }                                                               \
-        }                                                                   \
+#define MD_TEXT_INSECURE(type, str, offset, size)                                   \
+    do {                                                                            \
+        if(size > 0) {                                                              \
+            ret = md_text_with_null_replacement(ctx, type, str, offset, size);      \
+            if(ret != 0) {                                                          \
+                MD_LOG("Aborted from text() callback.");                            \
+                goto abort;                                                         \
+            }                                                                       \
+        }                                                                           \
     } while(0)
 
 
@@ -4232,7 +4234,7 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines)
         /* Process the text up to the next mark or end-of-line. */
         tmp = (line->end < mark->beg ? line->end : mark->beg);
         if(tmp > off) {
-            MD_TEXT(text_type, STR(off), tmp - off);
+            MD_TEXT(text_type, STR(off), off, tmp - off);
             off = tmp;
         }
 
@@ -4243,11 +4245,11 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines)
                     if(ISNEWLINE(mark->beg+1))
                         enforce_hardbreak = 1;
                     else
-                        MD_TEXT(text_type, STR(mark->beg+1), 1);
+                        MD_TEXT(text_type, STR(mark->beg+1), mark->beg+1, 1);
                     break;
 
                 case ' ':       /* Non-trivial space. */
-                    MD_TEXT(text_type, _T(" "), 1);
+                    MD_TEXT(text_type, _T(" "), mark->beg, 1);
                     break;
 
                 case '`':       /* Code span. */
@@ -4414,11 +4416,11 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines)
                 }
 
                 case '&':       /* Entity. */
-                    MD_TEXT(MD_TEXT_ENTITY, STR(mark->beg), mark->end - mark->beg);
+                    MD_TEXT(MD_TEXT_ENTITY, STR(mark->beg), mark->beg, mark->end - mark->beg);
                     break;
 
                 case '\0':
-                    MD_TEXT(MD_TEXT_NULLCHAR, _T(""), 1);
+                    MD_TEXT(MD_TEXT_NULLCHAR, _T(""), mark->beg, 1);
                     break;
 
                 case 127:
@@ -4451,11 +4453,11 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines)
                 while(off < ctx->size  &&  ISBLANK(off))
                     off++;
                 if(off > tmp)
-                    MD_TEXT(text_type, STR(tmp), off-tmp);
+                    MD_TEXT(text_type, STR(tmp), tmp, off-tmp);
 
                 /* and new lines are transformed into single spaces. */
                 if(off == line->end)
-                    MD_TEXT(text_type, _T(" "), 1);
+                    MD_TEXT(text_type, _T(" "), off, 1);
             } else if(text_type == MD_TEXT_HTML) {
                 /* Inside raw HTML, we output the new line verbatim, including
                  * any trailing spaces. */
@@ -4463,8 +4465,8 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines)
                 while(tmp < end  &&  ISBLANK(tmp))
                     tmp++;
                 if(tmp > off)
-                    MD_TEXT(MD_TEXT_HTML, STR(off), tmp - off);
-                MD_TEXT(MD_TEXT_HTML, _T("\n"), 1);
+                    MD_TEXT(MD_TEXT_HTML, STR(off), off, tmp - off);
+                MD_TEXT(MD_TEXT_HTML, _T("\n"), tmp, 1);
             } else {
                 /* Output soft or hard line break. */
                 MD_TEXTTYPE break_type = MD_TEXT_SOFTBR;
@@ -4480,7 +4482,7 @@ md_process_inlines(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines)
                     }
                 }
 
-                MD_TEXT(break_type, _T("\n"), 1);
+                MD_TEXT(break_type, _T("\n"), off, 1);
             }
 
             /* Move to the next line. */
@@ -4722,17 +4724,17 @@ md_process_verbatim_block_contents(MD_CTX* ctx, MD_TEXTTYPE text_type, const MD_
 
         /* Output code indentation. */
         while(indent > (int) indent_chunk_size) {
-            MD_TEXT(text_type, indent_chunk_str, indent_chunk_size);
+            MD_TEXT(text_type, indent_chunk_str, line->beg - indent_chunk_size, indent_chunk_size);
             indent -= indent_chunk_size;
         }
         if(indent > 0)
-            MD_TEXT(text_type, indent_chunk_str, indent);
+            MD_TEXT(text_type, indent_chunk_str, line->beg - indent, indent);
 
         /* Output the code line itself. */
-        MD_TEXT_INSECURE(text_type, STR(line->beg), line->end - line->beg);
+        MD_TEXT_INSECURE(text_type, STR(line->beg), line->beg, line->end - line->beg);
 
         /* Enforce end-of-line. */
-        MD_TEXT(text_type, _T("\n"), 1);
+        MD_TEXT(text_type, _T("\n"), line->end, 1);
     }
 
 abort:
