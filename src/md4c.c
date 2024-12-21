@@ -264,6 +264,9 @@ struct MD_CTX_tag {
     int html_block_type;    /* For checking closing raw HTML condition. */
     int last_line_has_list_loosening_effect;
     int last_list_item_starts_with_two_blank_lines;
+
+    /* Map byte offsets to character offsets */
+    unsigned* byte_to_char_offset;
 };
 
 enum MD_LINETYPE_tag {
@@ -393,7 +396,7 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OF
             off++;
 
         if(off > 0) {
-            ret = ctx->parser.text(type, str, absOff, off, ctx->userdata);
+            ret = ctx->parser.text(type, str, absOff, off, ctx->byte_to_char_offset[absOff], ctx->byte_to_char_offset[absOff + off - 1] - ctx->byte_to_char_offset[absOff] + 1, ctx->userdata);
             if(ret != 0)
                 return ret;
 
@@ -406,7 +409,7 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OF
         if(off >= size)
             return 0;
 
-        ret = ctx->parser.text(MD_TEXT_NULLCHAR, _T(""), absOff, 1, ctx->userdata);
+        ret = ctx->parser.text(MD_TEXT_NULLCHAR, _T(""), absOff, 1, ctx->byte_to_char_offset[absOff], 1, ctx->userdata);
         if(ret != 0)
             return ret;
         off++;
@@ -477,15 +480,15 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OF
         }                                                                   \
     } while(0)
 
-#define MD_TEXT(type, str, offset, size)                                              \
-    do {                                                                              \
-        if(size > 0) {                                                                \
-            ret = ctx->parser.text((type), (str), (offset), (size), ctx->userdata);   \
-            if(ret != 0) {                                                            \
-                MD_LOG("Aborted from text() callback.");                              \
-                goto abort;                                                           \
-            }                                                                         \
-        }                                                                             \
+#define MD_TEXT(type, str, offset, size)                                                                                                                                                                        \
+    do {                                                                                                                                                                                                        \
+        if(size > 0) {                                                                                                                                                                                          \
+            ret = ctx->parser.text((type), (str), (offset), (size), (ctx->byte_to_char_offset[offset]), (ctx->byte_to_char_offset[offset + size - 1] - ctx->byte_to_char_offset[offset] + 1), ctx->userdata);   \
+            if(ret != 0) {                                                                                                                                                                                      \
+                MD_LOG("Aborted from text() callback.");                                                                                                                                                        \
+                goto abort;                                                                                                                                                                                     \
+            }                                                                                                                                                                                                   \
+        }                                                                                                                                                                                                       \
     } while(0)
 
 #define MD_TEXT_INSECURE(type, str, offset, size)                                   \
@@ -2727,6 +2730,29 @@ md_rollback(MD_CTX* ctx, int opener_index, int closer_index, int how)
             ctx->marks[i].flags = 0;
         }
     }
+}
+
+static void
+md_build_byte_to_char_offset(MD_CTX* ctx)
+{
+    ctx->byte_to_char_offset = malloc(ctx->size * sizeof *ctx->byte_to_char_offset);
+
+    if (ctx->size == 0)
+        return;
+
+    int i;
+    unsigned characterOffset = 0;
+    for(i = 0; i < ctx->size - 1; i++) {
+        ctx->byte_to_char_offset[i] = characterOffset;
+#if defined MD4C_USE_UTF8
+        if ((CH(i + 1) & 0xc0) != 0x80) {
+            characterOffset++;
+        }
+#else
+#warning md_build_byte_to_char_offset only supports MD4C_USE_UTF8.
+#endif
+    }
+    ctx->byte_to_char_offset[i] = characterOffset;
 }
 
 static void
@@ -6466,6 +6492,7 @@ md_parse(const MD_CHAR* text, MD_SIZE size, const MD_PARSER* parser, void* userd
     memcpy(&ctx.parser, parser, sizeof(MD_PARSER));
     ctx.userdata = userdata;
     ctx.code_indent_offset = (ctx.parser.flags & MD_FLAG_NOINDENTEDCODEBLOCKS) ? (OFF)(-1) : 4;
+    md_build_byte_to_char_offset(&ctx);
     md_build_mark_char_map(&ctx);
     ctx.doc_ends_with_newline = (size > 0  &&  ISNEWLINE_(text[size-1]));
     ctx.max_ref_def_output = MIN(MIN(16 * (uint64_t)size, (uint64_t)(1024 * 1024)), (uint64_t)SZ_MAX);
@@ -6485,6 +6512,7 @@ md_parse(const MD_CHAR* text, MD_SIZE size, const MD_PARSER* parser, void* userd
     /* Clean-up. */
     md_free_ref_defs(&ctx);
     md_free_ref_def_hashtable(&ctx);
+    free(ctx.byte_to_char_offset);
     free(ctx.buffer);
     free(ctx.marks);
     free(ctx.block_bytes);
