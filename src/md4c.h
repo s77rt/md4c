@@ -366,7 +366,16 @@ typedef struct MD_PARSER {
     int (*enter_span)(MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
     int (*leave_span)(MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
 
-    int (*text)(MD_TEXTTYPE /*type*/, const MD_CHAR* /*text*/, MD_OFFSET /*offset*/, MD_SIZE /*size*/, MD_OFFSET /*offset_char*/, MD_SIZE /*size_char*/, void* /*userdata*/);
+    /*
+     * offset in number of bytes
+     * size in number of bytes
+     * offset_char in number of characters
+     * size_char in number of characters
+     * line_open in number of characters
+     *
+     * line_open is the offset of the first character in the line containing the sent text
+    */
+    int (*text)(MD_TEXTTYPE /*type*/, const MD_CHAR* /*text*/, MD_OFFSET /*offset*/, MD_SIZE /*size*/, MD_OFFSET /*offset_char*/, MD_SIZE /*size_char*/, MD_OFFSET /*line_open*/, void* /*userdata*/);
 
     /* Debug callback. Optional (may be NULL).
      *
