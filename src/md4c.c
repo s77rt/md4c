@@ -326,6 +326,9 @@ struct MD_VERBATIMLINE_tag {
 #define CH(off)                 (ctx->text[(off)])
 #define STR(off)                (ctx->text + (off))
 
+/* Size accessors. */
+#define TSZ()                   (ctx->size)
+
 /* Character classification.
  * Note we assume ASCII compatibility of code points < 128 here. */
 #define ISIN_(ch, ch_min, ch_max)       ((ch_min) <= (unsigned)(ch) && (unsigned)(ch) <= (ch_max))
@@ -397,7 +400,8 @@ md_ascii_eq(const CHAR* s1, const CHAR* s2, SZ n)
 static int
 md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OFF offset, SZ size)
 {
-    OFF absOff = offset;
+    OFF absolute_offset = offset;
+    OFF lookup_absolute_offset; /* Explained in the MD_TEXT MACRO */
     OFF off = 0;
     int ret = 0;
 
@@ -406,15 +410,16 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OF
             off++;
 
         if(off > 0) {
-            ret = ctx->parser.text(type, str, absOff, off,
-                                   ctx->byte_to_char_offset[absOff], ctx->byte_to_char_offset[absOff + off - 1] - ctx->byte_to_char_offset[absOff] + 1,
-                                   ctx->lines_oc[ctx->byte_to_line_number[absOff]].open, ctx->lines_oc[ctx->byte_to_line_number[absOff]].close,
+            lookup_absolute_offset = ((SZ)absolute_offset < TSZ()) ? absolute_offset : 0;
+            ret = ctx->parser.text(type, str, absolute_offset, off,
+                                   ctx->byte_to_char_offset[lookup_absolute_offset], ctx->byte_to_char_offset[lookup_absolute_offset + off - 1] - ctx->byte_to_char_offset[lookup_absolute_offset] + 1,
+                                   ctx->lines_oc[ctx->byte_to_line_number[lookup_absolute_offset]].open, ctx->lines_oc[ctx->byte_to_line_number[lookup_absolute_offset]].close,
                                    ctx->userdata);
             if(ret != 0)
                 return ret;
 
             str += off;
-            absOff += off;
+            absolute_offset += off;
             size -= off;
             off = 0;
         }
@@ -422,9 +427,10 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OF
         if(off >= size)
             return 0;
 
-        ret = ctx->parser.text(MD_TEXT_NULLCHAR, _T(""), absOff, 1,
-                               ctx->byte_to_char_offset[absOff], 1,
-                               ctx->lines_oc[ctx->byte_to_line_number[absOff]].open, ctx->lines_oc[ctx->byte_to_line_number[absOff]].close,
+        lookup_absolute_offset = absolute_offset < TSZ() ? absolute_offset : 0;
+        ret = ctx->parser.text(MD_TEXT_NULLCHAR, _T(""), absolute_offset, 1,
+                               ctx->byte_to_char_offset[lookup_absolute_offset], 1,
+                               ctx->lines_oc[ctx->byte_to_line_number[lookup_absolute_offset]].open, ctx->lines_oc[ctx->byte_to_line_number[lookup_absolute_offset]].close,
                                ctx->userdata);
         if(ret != 0)
             return ret;
@@ -496,18 +502,21 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OF
         }                                                                   \
     } while(0)
 
-#define MD_TEXT(type, str, offset, size)                                                                                                                   \
-    do {                                                                                                                                                   \
-        if(size > 0) {                                                                                                                                     \
-            ret = ctx->parser.text((type), (str), (offset), (size),                                                                                        \
-                                   ctx->byte_to_char_offset[offset], ctx->byte_to_char_offset[offset + size - 1] - ctx->byte_to_char_offset[offset] + 1,   \
-                                   ctx->lines_oc[ctx->byte_to_line_number[offset]].open, ctx->lines_oc[ctx->byte_to_line_number[offset]].close,            \
-                                   ctx->userdata);                                                                                                         \
-            if(ret != 0) {                                                                                                                                 \
-                MD_LOG("Aborted from text() callback.");                                                                                                   \
-                goto abort;                                                                                                                                \
-            }                                                                                                                                              \
-        }                                                                                                                                                  \
+#define MD_TEXT(type, str, offset, size)                                                                                                                                        \
+    do {                                                                                                                                                                        \
+        if(size > 0) {                                                                                                                                                          \
+            /* Offset can be out of range (i.e. adding new lines). Accessing the byte maps in this case causes UB. */                                                           \
+            /* Instead fallback to 0. This would give "incorrect" values but it's useless either way; there is no correct values. */                                            \
+            const OFF lookup_offset = (((SZ)(offset) < TSZ()) ? (offset) : 0);                                                                                                  \
+            ret = ctx->parser.text((type), (str), (offset), (size),                                                                                                             \
+                                   ctx->byte_to_char_offset[lookup_offset], ctx->byte_to_char_offset[lookup_offset + size - 1] - ctx->byte_to_char_offset[lookup_offset] + 1,   \
+                                   ctx->lines_oc[ctx->byte_to_line_number[lookup_offset]].open, ctx->lines_oc[ctx->byte_to_line_number[lookup_offset]].close,                   \
+                                   ctx->userdata);                                                                                                                              \
+            if(ret != 0) {                                                                                                                                                      \
+                MD_LOG("Aborted from text() callback.");                                                                                                                        \
+                goto abort;                                                                                                                                                     \
+            }                                                                                                                                                                   \
+        }                                                                                                                                                                       \
     } while(0)
 
 #define MD_TEXT_INSECURE(type, str, offset, size)                                   \
