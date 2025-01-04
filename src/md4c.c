@@ -270,9 +270,6 @@ struct MD_CTX_tag {
     int last_line_has_list_loosening_effect;
     int last_list_item_starts_with_two_blank_lines;
 
-    /* Map byte offsets to character offsets */
-    unsigned* byte_to_char_offset;
-
     /* Map byte offsets to line numbers */
     unsigned* byte_to_line_number;
 
@@ -425,7 +422,6 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OF
         if(off > 0) {
             lookup_absolute_offset = ((SZ)absolute_offset < TSZ()) ? absolute_offset : 0;
             ret = ctx->parser.text(type, str, absolute_offset, off,
-                                   ctx->byte_to_char_offset[lookup_absolute_offset], ctx->byte_to_char_offset[lookup_absolute_offset + off - 1] - ctx->byte_to_char_offset[lookup_absolute_offset] + 1,
                                    ctx->lines_oc[ctx->byte_to_line_number[lookup_absolute_offset]].open, ctx->lines_oc[ctx->byte_to_line_number[lookup_absolute_offset]].close,
                                    ctx->userdata);
             if(ret != 0)
@@ -442,7 +438,6 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OF
 
         lookup_absolute_offset = absolute_offset < TSZ() ? absolute_offset : 0;
         ret = ctx->parser.text(MD_TEXT_NULLCHAR, _T(""), absolute_offset, 1,
-                               ctx->byte_to_char_offset[lookup_absolute_offset], 1,
                                ctx->lines_oc[ctx->byte_to_line_number[lookup_absolute_offset]].open, ctx->lines_oc[ctx->byte_to_line_number[lookup_absolute_offset]].close,
                                ctx->userdata);
         if(ret != 0)
@@ -522,7 +517,6 @@ md_text_with_null_replacement(MD_CTX* ctx, MD_TEXTTYPE type, const CHAR* str, OF
             /* Instead fallback to 0. This would give "incorrect" values but it's useless either way; there is no correct values. */                                            \
             const OFF lookup_offset = (((SZ)(offset) < TSZ()) ? (offset) : 0);                                                                                                  \
             ret = ctx->parser.text((type), (str), (offset), (size),                                                                                                             \
-                                   ctx->byte_to_char_offset[lookup_offset], ctx->byte_to_char_offset[lookup_offset + size - 1] - ctx->byte_to_char_offset[lookup_offset] + 1,   \
                                    ctx->lines_oc[ctx->byte_to_line_number[lookup_offset]].open, ctx->lines_oc[ctx->byte_to_line_number[lookup_offset]].close,                   \
                                    ctx->userdata);                                                                                                                              \
             if(ret != 0) {                                                                                                                                                      \
@@ -2776,36 +2770,25 @@ md_rollback(MD_CTX* ctx, int opener_index, int closer_index, int how)
 static void
 md_build_byte_maps(MD_CTX* ctx)
 {
-    ctx->byte_to_char_offset = malloc(ctx->size * sizeof *ctx->byte_to_char_offset);
     ctx->byte_to_line_number = malloc(ctx->size * sizeof *ctx->byte_to_line_number);
     ctx->lines_oc = malloc(ctx->size * sizeof *ctx->lines_oc);
 
     if (ctx->size == 0)
         return;
 
-    int i;
-    unsigned offset_char = 0;
+    int i = 0;
     unsigned line_number = 0;
-    ctx->lines_oc[line_number].open = offset_char;
+    ctx->lines_oc[line_number].open = i;
     for(i = 0; i < ctx->size - 1; i++) {
         ctx->byte_to_line_number[i] = line_number;
-        ctx->byte_to_char_offset[i] = offset_char;
-#if defined MD4C_USE_UTF8
         if (CH(i) == 0x0a) {
-            ctx->lines_oc[line_number].close = offset_char;
+            ctx->lines_oc[line_number].close = i;
             line_number++;
-            ctx->lines_oc[line_number].open = offset_char + 1;
+            ctx->lines_oc[line_number].open = i + 1;
         }
-        if ((CH(i + 1) & 0xc0) != 0x80) {
-            offset_char++;
-        }
-#else
-#warning md_build_byte_maps only supports MD4C_USE_UTF8.
-#endif
     }
     ctx->byte_to_line_number[i] = line_number;
-    ctx->byte_to_char_offset[i] = offset_char;
-    ctx->lines_oc[line_number].close = offset_char;
+    ctx->lines_oc[line_number].close = i;
 }
 
 static void
@@ -6565,7 +6548,6 @@ md_parse(const MD_CHAR* text, MD_SIZE size, const MD_PARSER* parser, void* userd
     /* Clean-up. */
     md_free_ref_defs(&ctx);
     md_free_ref_def_hashtable(&ctx);
-    free(ctx.byte_to_char_offset);
     free(ctx.byte_to_line_number);
     free(ctx.lines_oc);
     free(ctx.buffer);
