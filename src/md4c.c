@@ -4115,7 +4115,7 @@ md_analyze_marks(MD_CTX* ctx, const MD_LINE* lines, MD_SIZE n_lines,
         /* Skip resolved spans. */
         if(mark->flags & MD_MARK_RESOLVED) {
             if((mark->flags & MD_MARK_OPENER)  &&
-               !((flags & MD_ANALYZE_NOSKIP_EMPH) && ISANYOF_(mark->ch, "*_~")))
+               !((flags & MD_ANALYZE_NOSKIP_EMPH) && ISANYOF_(mark->ch, _T("*_~"))))
             {
                 MD_ASSERT(i < mark->next);
                 i = mark->next + 1;
