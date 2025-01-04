@@ -366,7 +366,20 @@ struct MD_VERBATIMLINE_tag {
 
 
 #if defined MD4C_USE_UTF16
-    #define md_strchr wcschr
+    #ifdef _WIN32
+        #define md_strchr wcschr
+    #else
+        wchar_t *
+        wcschr_short(const wchar_t *s, wchar_t c)
+        {
+            while (*s != c && *s != L'\0')
+                s++;
+            if (*s == c)
+                return ((wchar_t *)s);
+            return (NULL);
+        }
+        #define md_strchr wcschr_short
+    #endif
 #else
     #define md_strchr strchr
 #endif
@@ -862,8 +875,8 @@ struct MD_UNICODE_FOLD_INFO_tag {
 
 
 #if defined MD4C_USE_UTF16
-    #define IS_UTF16_SURROGATE_HI(word)     (((WORD)(word) & 0xfc00) == 0xd800)
-    #define IS_UTF16_SURROGATE_LO(word)     (((WORD)(word) & 0xfc00) == 0xdc00)
+    #define IS_UTF16_SURROGATE_HI(word)     (((MD_WORD)(word) & 0xfc00) == 0xd800)
+    #define IS_UTF16_SURROGATE_LO(word)     (((MD_WORD)(word) & 0xfc00) == 0xdc00)
     #define UTF16_DECODE_SURROGATE(hi, lo)  (0x10000 + ((((unsigned)(hi) & 0x3ff) << 10) | (((unsigned)(lo) & 0x3ff) << 0)))
 
     static unsigned

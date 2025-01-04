@@ -37,8 +37,13 @@
     #ifdef _WIN32
         #include <windows.h>
         typedef WCHAR       MD_CHAR;
+        typedef WORD        MD_WORD;
     #else
-        #error MD4C_USE_UTF16 is only supported on Windows.
+        /* Must be compiled with -fshort-wchar */
+        #include <wchar.h>
+        #include <stdint.h>
+        typedef wchar_t       MD_CHAR;
+        typedef uint16_t      MD_WORD;
     #endif
 #else
     typedef char            MD_CHAR;
