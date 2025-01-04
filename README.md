@@ -177,7 +177,9 @@ preprocessor macros (as specified at the time MD4C is being built):
 * On Windows, if preprocessor macro `MD4C_USE_UTF16` is defined, MD4C uses
   `WCHAR` instead of `char` and assumes UTF-16 encoding in those situations.
   (UTF-16 is what Windows developers usually call just "Unicode" and what
-  Win32API generally works with.)
+  Win32API generally works with.). On Unix, MD4C uses `wchar_t` which is
+  implementation-dependant, you have to compile with `-fshort-wchar` flag to
+  ensure a 16-bit representation.
 
   Note that because this macro affects also the types in `md4c.h`, you have
   to define the macro both when building MD4C as well as when including
