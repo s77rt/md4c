@@ -495,7 +495,7 @@ leave_span_callback(MD_SPANTYPE type, void* detail, void* userdata)
 }
 
 static int
-text_callback(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* userdata)
+text_callback(MD_TEXTTYPE type, const MD_CHAR* text, MD_OFFSET offset, MD_SIZE size, MD_OFFSET line_open, MD_OFFSET line_close, void* userdata)
 {
     MD_HTML* r = (MD_HTML*) userdata;
 
