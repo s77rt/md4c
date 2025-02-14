@@ -2770,14 +2770,17 @@ md_rollback(MD_CTX* ctx, int opener_index, int closer_index, int how)
 static void
 md_build_code_unit_maps(MD_CTX* ctx)
 {
+    unsigned i;
+    unsigned line_number;
+
     ctx->code_unit_to_line_number = malloc(ctx->size * sizeof *ctx->code_unit_to_line_number);
     ctx->lines_oc = malloc(ctx->size * sizeof *ctx->lines_oc);
 
     if (ctx->size == 0)
         return;
 
-    int i = 0;
-    unsigned line_number = 0;
+    i = 0;
+    line_number = 0;
     ctx->lines_oc[line_number].open = i;
     for(i = 0; i < ctx->size - 1; i++) {
         ctx->code_unit_to_line_number[i] = line_number;
